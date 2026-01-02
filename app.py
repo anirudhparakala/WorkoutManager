@@ -64,9 +64,10 @@ if active_session:
                     st.markdown(f"**Target**: {default_reps} x {default_weight} lbs")
                 
                 with c2:
-                    actual_reps = st.number_input("Reps", value=default_reps, key="curr_reps")
+                    # distinct key per set to prevent value carry-over
+                    actual_reps = st.number_input("Reps", value=default_reps, key=f"curr_reps_{current_set['set_number']}_{active_ex['id']}")
                 with c3:
-                    actual_weight = st.number_input("Weight", value=default_weight, step=2.5, key="curr_weight")
+                    actual_weight = st.number_input("Weight", value=default_weight, step=2.5, key=f"curr_weight_{current_set['set_number']}_{active_ex['id']}")
                 
                 st.write("")
                 if st.button("✅ Complete Set", type="primary", use_container_width=True):
