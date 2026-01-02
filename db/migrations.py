@@ -72,3 +72,17 @@ def migrate():
         print("Migration v3 applied successfully.")
     else:
         print("Database is up to date.")
+
+    if current_version < 4:
+        print("Applying migration v4 (Timers)...")
+        try:
+            execute("ALTER TABLE sets ADD COLUMN started_at DATETIME")
+        except Exception:
+            pass
+        try:
+            execute("ALTER TABLE sets ADD COLUMN completed_at DATETIME")
+        except Exception:
+            pass
+        
+        execute("INSERT INTO schema_version (version) VALUES (4)")
+        print("Migration v4 applied successfully.")

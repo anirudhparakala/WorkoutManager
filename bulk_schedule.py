@@ -121,3 +121,4 @@ def bulk_schedule():
 
 if __name__ == "__main__":
     bulk_schedule()
+    os._exit(0)

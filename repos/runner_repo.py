@@ -139,7 +139,7 @@ def create_session_from_template(date_str, template_id):
 def get_workout_set(workout_id, exercise_order, set_number):
     """Retrieves a specific set by workout structure."""
     row = query_one("""
-        SELECT s.id, s.completed, s.actual_reps, s.actual_weight
+        SELECT s.id, s.completed, s.actual_reps, s.actual_weight, s.started_at, s.completed_at
         FROM sets s
         JOIN workout_exercises we ON s.workout_exercise_id = we.id
         WHERE we.workout_id = ? 
@@ -152,7 +152,9 @@ def get_workout_set(workout_id, exercise_order, set_number):
             "id": row[0],
             "completed": bool(row[1]),
             "actual_reps": row[2],
-            "actual_weight": row[3]
+            "actual_weight": row[3],
+            "started_at": row[4],
+            "completed_at": row[5]
         }
     return None
 
@@ -161,9 +163,16 @@ def update_set_actuals(set_id, reps, weight):
     completed_at = datetime.datetime.now().isoformat()
     execute("""
         UPDATE sets 
-        SET actual_reps = ?, actual_weight = ?, completed = 1
+        SET actual_reps = ?, actual_weight = ?, completed = 1, completed_at = ?
         WHERE id = ?
-    """, (reps, weight, set_id))
+    """, (reps, weight, completed_at, set_id))
+
+def start_set_timer(set_id):
+    """Marks a set as started (IN_SET state)."""
+    started_at = datetime.datetime.now().isoformat()
+    # Only update if not already started? Or simpler to just overwrite if user clicks "Start" again?
+    # Overwriting re-starts the timer. That's probably expected behavior if they mess up.
+    execute("UPDATE sets SET started_at = ? WHERE id = ?", (started_at, set_id))
 
 def get_workout_exercises_with_sets(workout_id):
     """Returns all exercises and sets for a workout to build progression."""
@@ -171,7 +180,8 @@ def get_workout_exercises_with_sets(workout_id):
     # Flat fetch of sets joined with workout_exercises
     rows = query_all("""
         SELECT we.id, we.exercise_id, e.name, we.order_index, 
-               s.id, s.set_number, s.planned_reps, s.planned_weight, s.actual_reps, s.actual_weight, s.completed
+               s.id, s.set_number, s.planned_reps, s.planned_weight, s.actual_reps, s.actual_weight, s.completed,
+               s.started_at, s.completed_at
         FROM workout_exercises we
         JOIN exercises e ON we.exercise_id = e.id
         JOIN sets s ON s.workout_exercise_id = we.id
@@ -205,7 +215,9 @@ def get_workout_exercises_with_sets(workout_id):
             "planned_weight": r[7],
             "actual_reps": r[8],
             "actual_weight": r[9],
-            "completed": bool(r[10])
+            "completed": bool(r[10]),
+            "started_at": r[11],
+            "completed_at": r[12]
         })
         
     return results

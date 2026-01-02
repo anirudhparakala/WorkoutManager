@@ -7,6 +7,15 @@ def start_workout(date_str, template_id):
     """Starts a new workout session (snapshot)."""
     return runner_repo.start_workout_session(date_str, template_id)
 
+def start_set(workout_id, exercise_order, set_number):
+    """Starts the timer for a specific set."""
+    target_set = runner_repo.get_workout_set(workout_id, exercise_order, set_number)
+    if not target_set:
+        raise RunnerError(f"Set not found: W:{workout_id} E:{exercise_order} S:{set_number}")
+    
+    runner_repo.start_set_timer(target_set['id'])
+    return True
+
 def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_weight):
     """Marks a set as complete. Idempotent."""
     target_set = runner_repo.get_workout_set(workout_id, exercise_order, set_number)
@@ -97,11 +106,54 @@ def get_workout_progression(workout_id):
     if not exercises:
         is_completed = False # Empty workout?
         
+    # Calculate State & Timers
+    state = "COMPLETED"
+    timer_base = None # ISO string to count from
+    
+    if not is_completed and current_set:
+        if current_set.get('started_at'):
+            state = "IN_SET"
+            timer_base = current_set['started_at']
+        else:
+            state = "READY" # Implies Rest if applicable
+            # Find previous set for Rest Timer
+            # We need to flatten or search history? 
+            # simplest: traverse backwards from current_set
+            # current_set is active_exercise set X.
+            # Look at set X-1, or last set of previous exercise.
+            
+            # Helper to find last completed set
+            last_completed = None
+            found_current = False
+            
+            # Flatten sets for easier traversal
+            all_sets = []
+            for ex in exercises:
+                for s in ex['sets']:
+                    all_sets.append(s)
+            
+            for i, s in enumerate(all_sets):
+                if s['id'] == current_set['id']:
+                    if i > 0:
+                        last_completed = all_sets[i-1]
+                    break
+            
+            if last_completed and last_completed['completed_at']:
+                state = "REST"
+                timer_base = last_completed['completed_at']
+            else:
+                # First set of workout
+                # We could use workout start time? 
+                # Let's leave it None or handle in UI
+                pass
+
     return {
         "is_completed": is_completed,
         "current_set": current_set,
         "active_exercise": active_exercise,
         "active_exercise_history": active_exercise_history,
-        "total_exercises_count": len(exercises)
+        "total_exercises_count": len(exercises),
+        "state": state,
+        "timer_base": timer_base
     }
 
