@@ -86,3 +86,18 @@ def migrate():
         
         execute("INSERT INTO schema_version (version) VALUES (4)")
         print("Migration v4 applied successfully.")
+
+    if current_version < 5:
+        print("Applying migration v5 (Overload Tracking)...")
+        execute("""
+            CREATE TABLE IF NOT EXISTS overload_tracking (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id INTEGER NOT NULL,
+                exercise_id INTEGER NOT NULL,
+                current_target_set INTEGER NOT NULL,
+                FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE,
+                UNIQUE (template_id, exercise_id)
+            )
+        """)
+        execute("INSERT INTO schema_version (version) VALUES (5)")
+        print("Migration v5 applied successfully.")

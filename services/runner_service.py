@@ -37,6 +37,12 @@ def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_wei
         template_id = w_row[0]
         templates_repo.update_template_set_match(template_id, exercise_order, set_number, actual_reps, actual_weight)
     
+    # Check progressive overload advancement
+    try:
+        check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps)
+    except Exception:
+        pass  # Overload tracking should never block set completion
+    
     return True
 
 def update_completed_set(set_id, actual_reps, actual_weight):
@@ -157,3 +163,113 @@ def get_workout_progression(workout_id):
         "timer_base": timer_base
     }
 
+
+# --- Progressive Overload ---
+
+def get_progressive_overload_targets(workout_id):
+    """
+    Returns a dict mapping (exercise_id, set_number) -> {suggested_reps, last_reps}
+    for progressive overload display.
+    
+    The cursor starts at set 3 (or last set if fewer than 3).
+    Suggestion is always last_actual_reps + 1.
+    """
+    from db.conn import query_one
+    w_row = query_one("SELECT template_id FROM workouts WHERE id = ?", (workout_id,))
+    if not w_row or not w_row[0]:
+        return {}
+    
+    template_id = w_row[0]
+    last_exercises = runner_repo.get_last_completed_workout_for_template(
+        template_id, exclude_workout_id=workout_id
+    )
+    if not last_exercises:
+        return {}
+    
+    targets = {}
+    
+    for ex in last_exercises:
+        exercise_id = ex['exercise_id']
+        completed_sets = [s for s in ex['sets'] if s['completed']]
+        if not completed_sets:
+            continue
+        
+        total_sets = len(ex['sets'])
+        
+        # Get cursor position (or initialize to set 3 / last set)
+        cursor = runner_repo.get_overload_cursor(template_id, exercise_id)
+        if cursor is None:
+            cursor = min(3, total_sets)
+            runner_repo.set_overload_cursor(template_id, exercise_id, cursor)
+        
+        # Find the targeted set's actual data from last workout
+        target_set_data = None
+        for s in completed_sets:
+            if s['set_number'] == cursor:
+                target_set_data = s
+                break
+        
+        if target_set_data and target_set_data['actual_reps'] is not None:
+            targets[(exercise_id, cursor)] = {
+                'suggested_reps': target_set_data['actual_reps'] + 1,
+                'last_reps': target_set_data['actual_reps'],
+                'set_number': cursor,
+                'total_sets': total_sets
+            }
+    
+    return targets
+
+
+def check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps):
+    """
+    After a set is completed, check if it was the overload target set
+    and if actual == suggested. If so, advance the cursor.
+    
+    Cursor advancement wraps: after last set -> set 1 -> set 2 -> ...
+    """
+    from db.conn import query_one
+    
+    # Get template_id and exercise_id
+    row = query_one("""
+        SELECT w.template_id, we.exercise_id
+        FROM workouts w
+        JOIN workout_exercises we ON we.workout_id = w.id
+        WHERE w.id = ? AND we.order_index = ?
+    """, (workout_id, exercise_order))
+    
+    if not row or not row[0]:
+        return
+    
+    template_id, exercise_id = row[0], row[1]
+    
+    # Check if this set is the one being tracked
+    cursor = runner_repo.get_overload_cursor(template_id, exercise_id)
+    if cursor is None or cursor != set_number:
+        return  # Not the tracked set, nothing to do
+    
+    # Compute what was suggested (same logic as display)
+    last_exercises = runner_repo.get_last_completed_workout_for_template(
+        template_id, exclude_workout_id=workout_id
+    )
+    if not last_exercises:
+        return
+    
+    # Find matching exercise and set
+    for ex in last_exercises:
+        if ex['exercise_id'] != exercise_id:
+            continue
+        for s in ex['sets']:
+            if s['set_number'] == cursor and s['completed'] and s['actual_reps'] is not None:
+                suggested = s['actual_reps'] + 1
+                
+                if actual_reps == suggested:
+                    # TARGET MET → advance cursor
+                    total_sets = len(ex['sets'])
+                    if cursor >= total_sets:
+                        next_cursor = 1  # Wrap around to set 1
+                    else:
+                        next_cursor = cursor + 1
+                    
+                    runner_repo.set_overload_cursor(template_id, exercise_id, next_cursor)
+                # else: cursor stays, do nothing
+                return

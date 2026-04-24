@@ -78,7 +78,7 @@ def render_timer(label, start_time_iso, color="#333", key_prefix="timer"):
     <body>
         <div class="timer-box">
             <div class="timer-label">{label}</div>
-            <div id="timer_val" class="timer-val">--:--</div>
+            <div id="timer_val" class="timer-val">-:--:--</div>
         </div>
         <script>
             console.log("Timer initialized: {label}");
@@ -90,13 +90,14 @@ def render_timer(label, start_time_iso, color="#333", key_prefix="timer"):
                 var diff = now - start;
                 if (diff < 0) diff = 0;
                 
+                var h = Math.floor(diff / (1000 * 60 * 60));
                 var m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                 var s = Math.floor((diff % (1000 * 60)) / 1000);
                 
                 m = (m < 10) ? "0" + m : m;
                 s = (s < 10) ? "0" + s : s;
                 
-                el.innerText = m + ":" + s;
+                el.innerText = h + ":" + m + ":" + s;
             }}
             
             setInterval(update, 1000);
@@ -162,6 +163,11 @@ if active_session:
             active_ex = progression['active_exercise']
             state = progression['state'] # READY, IN_SET, REST
             
+            # --- Progressive Overload Targets ---
+            overload_targets = runner_service.get_progressive_overload_targets(active_session['id'])
+            overload_key = (active_ex['exercise_id'], current_set['set_number'])
+            overload = overload_targets.get(overload_key)
+            
             # --- Workout Timer ---
             if active_session['started_at']:
                  render_timer("Total Workout Time", active_session['started_at'], color="#4CAF50", key_prefix="workout_total")
@@ -177,7 +183,10 @@ if active_session:
                     if progression.get('timer_base'):
                          render_timer("Rest Time", progression['timer_base'], color="#2196F3", key_prefix="rest_timer")
                     
-                    st.info(f"Target: {current_set['planned_reps']} reps @ {current_set['planned_weight']} lbs")
+                    if overload:
+                        st.info(f"Target: {overload['suggested_reps']} reps ⬆️ (was {overload['last_reps']}) @ {current_set['planned_weight']} lbs")
+                    else:
+                        st.info(f"Target: {current_set['planned_reps']} reps @ {current_set['planned_weight']} lbs")
                     
                     if st.button(f"⏱️ Start Set {current_set['set_number']}", type="primary", use_container_width=True):
                         # Start Timer
@@ -194,12 +203,18 @@ if active_session:
                 
                     c1, c2, c3 = st.columns([2, 2, 2])
                     
-                    # Defaults
-                    default_reps = current_set['planned_reps'] or 0
+                    # Defaults — use overload suggestion if available
+                    if overload:
+                        default_reps = overload['suggested_reps']
+                    else:
+                        default_reps = current_set['planned_reps'] or 0
                     default_weight = current_set['planned_weight'] or 0.0
                     
                     with c1:
-                        st.markdown(f"**Target**: {default_reps} x {default_weight} lbs")
+                        if overload:
+                            st.markdown(f"**Target**: {overload['suggested_reps']} ⬆️ (was {overload['last_reps']}) x {default_weight} lbs")
+                        else:
+                            st.markdown(f"**Target**: {default_reps} x {default_weight} lbs")
                     
                     with c2:
                         actual_reps = st.number_input("Reps", value=default_reps, key=f"curr_reps_{current_set['id']}")

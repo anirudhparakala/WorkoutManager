@@ -231,3 +231,40 @@ def complete_workout_session(workout_id):
     completed_at = datetime.datetime.now().isoformat()
     execute("UPDATE workouts SET status = 'COMPLETED', completed_at = ? WHERE id = ?", (completed_at, workout_id))
 
+def get_last_completed_workout_for_template(template_id, exclude_workout_id=None):
+    """Returns exercise/set data from the most recent COMPLETED workout using this template."""
+    if exclude_workout_id:
+        row = query_one("""
+            SELECT id FROM workouts 
+            WHERE template_id = ? AND status = 'COMPLETED' AND id != ?
+            ORDER BY date DESC LIMIT 1
+        """, (template_id, exclude_workout_id))
+    else:
+        row = query_one("""
+            SELECT id FROM workouts 
+            WHERE template_id = ? AND status = 'COMPLETED'
+            ORDER BY date DESC LIMIT 1
+        """, (template_id,))
+    
+    if not row:
+        return None
+    
+    return get_workout_exercises_with_sets(row[0])
+
+def get_overload_cursor(template_id, exercise_id):
+    """Returns the current target set number for overload, or None if not initialized."""
+    row = query_one(
+        "SELECT current_target_set FROM overload_tracking WHERE template_id = ? AND exercise_id = ?",
+        (template_id, exercise_id)
+    )
+    return row[0] if row else None
+
+def set_overload_cursor(template_id, exercise_id, target_set):
+    """Upserts the overload cursor position."""
+    execute("""
+        INSERT INTO overload_tracking (template_id, exercise_id, current_target_set)
+        VALUES (?, ?, ?)
+        ON CONFLICT(template_id, exercise_id) 
+        DO UPDATE SET current_target_set = excluded.current_target_set
+    """, (template_id, exercise_id, target_set))
+

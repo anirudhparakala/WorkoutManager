@@ -16,178 +16,221 @@ require_login()
 
 st.title("Manage Workouts")
 
+# --- State Initialization ---
+if "template_view_mode" not in st.session_state:
+    st.session_state["template_view_mode"] = "list"
+
 tab_templates, tab_schedule = st.tabs(["Templates", "Assign"])
 
 with tab_templates:
-    # --- Sidebar: Template List ---
-    st.sidebar.header("Templates")
     templates = get_all_templates()
 
-    # Create New Template
-    with st.sidebar.expander("Create New Template"):
-        new_template_name = st.text_input("Template Name")
-        if st.button("Create"):
-            if new_template_name:
-                try:
-                    new_id = create_template(new_template_name)
-                    st.session_state["selected_template_id"] = new_id
-                    st.rerun()
-                except ValidationError as e:
-                    st.sidebar.error(str(e))
-            else:
-                st.sidebar.error("Name required")
-    
-    # --- Backup & Data ---
-    with st.sidebar.expander("Backup & Data"):
-        st.write("Export your data to JSON.")
-        from repos.backup_repo import export_data
-        import json
-        
-        if st.button("Prepare Backup"):
-            data = export_data()
-            json_str = json.dumps(data, indent=2, default=str)
-            st.download_button(
-                label="⬇️ Download JSON",
-                data=json_str,
-                file_name="workout_manager_backup.json",
-                mime="application/json"
-            )
+    # ========================================
+    # LIST VIEW (Browse all templates)
+    # ========================================
+    if st.session_state["template_view_mode"] == "list":
 
-    # Select Template
-
-    # Select Template
-    # Ensure selected_template_id is in options, otherwise default to first
-    if "selected_template_id" not in st.session_state or st.session_state["selected_template_id"] not in [t['id'] for t in templates]:
-        if templates:
-            st.session_state["selected_template_id"] = templates[0]['id']
-        else:
-            st.session_state["selected_template_id"] = None
-
-    selected_template_id = st.sidebar.radio(
-        "Select Template",
-        options=[t['id'] for t in templates],
-        format_func=lambda x: next((t['name'] for t in templates if t['id'] == x), "Unknown"),
-        key="selected_template_id"
-    )
-
-    if not selected_template_id:
-        st.info("Create or select a template to get started.")
-    else:
-        # --- Main: Template Editor ---
-        template = get_template(selected_template_id)
-
-        if not template:
-            st.error("Template not found.")
-        else:
-            # Header / Rename / Delete
-            col1, col2, col3 = st.columns([3, 1, 1])
-            with col1:
-                # Use a unique key per template to avoid state bleeding
-                new_name = st.text_input("Template Name", value=template['name'], key=f"template_name_{template['id']}")
-                if new_name != template['name']:
+        # --- Create New Template ---
+        with st.expander("➕ Create New Template"):
+            new_template_name = st.text_input("Template Name", key="new_tpl_name")
+            if st.button("Create", key="create_tpl_btn"):
+                if new_template_name:
                     try:
-                        update_template(template['id'], new_name)
+                        new_id = create_template(new_template_name)
+                        st.session_state["selected_template_id"] = new_id
+                        st.session_state["template_view_mode"] = "edit"
                         st.rerun()
                     except ValidationError as e:
                         st.error(str(e))
-            with col3:
-                if st.button("Delete Template", type="primary"):
-                    delete_template(template['id'])
-                    st.rerun()
+                else:
+                    st.error("Name required")
 
-            st.divider()
+        st.divider()
 
-            # --- Exercises List ---
-            st.subheader("Exercises")
+        # --- Template Card Grid ---
+        if not templates:
+            st.info("No templates yet. Create one above to get started.")
+        else:
+            # Render in a 2-column grid
+            for row_start in range(0, len(templates), 2):
+                cols = st.columns(2)
+                for col_idx in range(2):
+                    t_idx = row_start + col_idx
+                    if t_idx >= len(templates):
+                        break
+                    t = templates[t_idx]
 
-            if not template['exercises']:
-                st.info("No exercises in this template yet.")
+                    with cols[col_idx]:
+                        # Fetch full template to get exercise details
+                        full_tpl = get_template(t['id'])
+                        ex_count = len(full_tpl['exercises']) if full_tpl else 0
 
-            for i, ex in enumerate(template['exercises']):
-                with st.expander(f"{i+1}. {ex['name']}", expanded=True):
-                    # Controls Row
-                    c1, c2, c3, c4 = st.columns([1, 1, 4, 1])
-                    with c1:
-                        if i > 0:
-                            if st.button("⬆️", key=f"up_{ex['id']}"):
-                                # Swap with previous
-                                current_order = [x['id'] for x in template['exercises']]
-                                current_order[i], current_order[i-1] = current_order[i-1], current_order[i]
-                                reorder_exercises(template['id'], current_order)
+                        # Exercise preview (first 3 names)
+                        if full_tpl and full_tpl['exercises']:
+                            preview_names = [ex['name'] for ex in full_tpl['exercises'][:3]]
+                            preview = ", ".join(preview_names)
+                            if ex_count > 3:
+                                preview += f" +{ex_count - 3} more"
+                        else:
+                            preview = "No exercises"
+
+                        # Card container
+                        with st.container(border=True):
+                            st.markdown(f"**{t['name']}**")
+                            st.caption(f"{ex_count} exercise{'s' if ex_count != 1 else ''} · {preview}")
+                            if st.button("Edit", key=f"edit_tpl_{t['id']}", use_container_width=True):
+                                st.session_state["selected_template_id"] = t['id']
+                                st.session_state["template_view_mode"] = "edit"
                                 st.rerun()
-                    with c2:
-                        if i < len(template['exercises']) - 1:
-                            if st.button("⬇️", key=f"down_{ex['id']}"):
-                                # Swap with next
-                                current_order = [x['id'] for x in template['exercises']]
-                                current_order[i], current_order[i+1] = current_order[i+1], current_order[i]
-                                reorder_exercises(template['id'], current_order)
-                                st.rerun()
-                    with c4:
-                        if st.button("Remove", key=f"remove_{ex['id']}", type="primary"):
-                            remove_exercise(ex['id'])
-                            st.rerun()
-                    
-                    # Sets Editor
-                    st.markdown("**Sets**")
-                    if not ex['sets']:
-                        st.caption("No sets defined.")
-                    
-                    for s in ex['sets']:
-                        sc1, sc2, sc3, sc4 = st.columns([1, 2, 2, 1])
-                        with sc1:
-                            st.write(f"Set {s['set_number']}")
-                        with sc2:
-                            reps = st.number_input("Reps", value=s['reps'] or 0, key=f"reps_{s['id']}")
-                        with sc3:
-                            weight = st.number_input("Weight", value=s['weight'] or 0.0, step=2.5, key=f"weight_{s['id']}")
-                        with sc4:
-                            if st.button("❌", key=f"del_set_{s['id']}"):
-                                delete_set(s['id'])
-                                st.rerun()
-                        
-                        # Auto-save on change (Streamlit reruns on input change)
-                        if reps != (s['reps'] or 0) or weight != (s['weight'] or 0.0):
-                            try:
-                                update_set(s['id'], reps, weight)
-                            except ValidationError as e:
-                                st.error(str(e))
-                            # We don't rerun here to avoid jarring UX, but it saves.
-                            # Actually, we might need to rerun to refresh the state if we want strict consistency,
-                            # but for inputs, it's usually fine.
-                    
-                    if st.button("Add Set", key=f"add_set_{ex['id']}"):
+
+        st.divider()
+
+        # --- Backup & Data ---
+        with st.expander("Backup & Data"):
+            st.write("Export your data to JSON.")
+            from repos.backup_repo import export_data
+            import json
+
+            if st.button("Prepare Backup", key="backup_btn"):
+                data = export_data()
+                json_str = json.dumps(data, indent=2, default=str)
+                st.download_button(
+                    label="⬇️ Download JSON",
+                    data=json_str,
+                    file_name="workout_manager_backup.json",
+                    mime="application/json"
+                )
+
+    # ========================================
+    # EDIT VIEW (Single template editor)
+    # ========================================
+    elif st.session_state["template_view_mode"] == "edit":
+        selected_template_id = st.session_state.get("selected_template_id")
+
+        # Back button
+        if st.button("← Back to Templates"):
+            st.session_state["template_view_mode"] = "list"
+            st.rerun()
+
+        if not selected_template_id:
+            st.warning("No template selected.")
+        else:
+            template = get_template(selected_template_id)
+
+            if not template:
+                st.error("Template not found.")
+                st.session_state["template_view_mode"] = "list"
+            else:
+                # Header / Rename / Delete
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    # Use a unique key per template to avoid state bleeding
+                    new_name = st.text_input("Template Name", value=template['name'], key=f"template_name_{template['id']}")
+                    if new_name != template['name']:
                         try:
-                            add_set(ex['id'], 10, 0) # Default values
+                            update_template(template['id'], new_name)
                             st.rerun()
                         except ValidationError as e:
                             st.error(str(e))
+                with col3:
+                    if st.button("Delete Template", type="primary"):
+                        delete_template(template['id'])
+                        st.session_state["template_view_mode"] = "list"
+                        st.rerun()
 
-            st.divider()
+                st.divider()
 
-            # --- Add Exercise Section ---
-            st.subheader("Add Exercise")
-            all_exercises = get_all_exercises()
-            exercise_options = {e['id']: e['name'] for e in all_exercises}
+                # --- Exercises List ---
+                st.subheader("Exercises")
 
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                selected_ex_id = st.selectbox("Select Exercise", options=list(exercise_options.keys()), format_func=lambda x: exercise_options[x])
-            with c2:
-                if st.button("Add to Template"):
-                    add_exercise(template['id'], selected_ex_id)
-                    st.rerun()
+                if not template['exercises']:
+                    st.info("No exercises in this template yet.")
 
-            with st.expander("Create New Exercise"):
-                new_ex_name = st.text_input("Exercise Name")
-                if st.button("Create Exercise"):
-                    if new_ex_name:
-                        try:
-                            create_exercise(new_ex_name)
-                            st.success(f"Created {new_ex_name}")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+                for i, ex in enumerate(template['exercises']):
+                    with st.expander(f"{i+1}. {ex['name']}", expanded=True):
+                        # Controls Row
+                        c1, c2, c3, c4 = st.columns([1, 1, 4, 1])
+                        with c1:
+                            if i > 0:
+                                if st.button("⬆️", key=f"up_{ex['id']}"):
+                                    # Swap with previous
+                                    current_order = [x['id'] for x in template['exercises']]
+                                    current_order[i], current_order[i-1] = current_order[i-1], current_order[i]
+                                    reorder_exercises(template['id'], current_order)
+                                    st.rerun()
+                        with c2:
+                            if i < len(template['exercises']) - 1:
+                                if st.button("⬇️", key=f"down_{ex['id']}"):
+                                    # Swap with next
+                                    current_order = [x['id'] for x in template['exercises']]
+                                    current_order[i], current_order[i+1] = current_order[i+1], current_order[i]
+                                    reorder_exercises(template['id'], current_order)
+                                    st.rerun()
+                        with c4:
+                            if st.button("Remove", key=f"remove_{ex['id']}", type="primary"):
+                                remove_exercise(ex['id'])
+                                st.rerun()
+                        
+                        # Sets Editor
+                        st.markdown("**Sets**")
+                        if not ex['sets']:
+                            st.caption("No sets defined.")
+                        
+                        for s in ex['sets']:
+                            sc1, sc2, sc3, sc4 = st.columns([1, 2, 2, 1])
+                            with sc1:
+                                st.write(f"Set {s['set_number']}")
+                            with sc2:
+                                reps = st.number_input("Reps", value=s['reps'] or 0, key=f"reps_{s['id']}")
+                            with sc3:
+                                weight = st.number_input("Weight", value=s['weight'] or 0.0, step=2.5, key=f"weight_{s['id']}")
+                            with sc4:
+                                if st.button("❌", key=f"del_set_{s['id']}"):
+                                    delete_set(s['id'])
+                                    st.rerun()
+                            
+                            # Auto-save on change (Streamlit reruns on input change)
+                            if reps != (s['reps'] or 0) or weight != (s['weight'] or 0.0):
+                                try:
+                                    update_set(s['id'], reps, weight)
+                                except ValidationError as e:
+                                    st.error(str(e))
+                                # We don't rerun here to avoid jarring UX, but it saves.
+                                # Actually, we might need to rerun to refresh the state if we want strict consistency,
+                                # but for inputs, it's usually fine.
+                        
+                        if st.button("Add Set", key=f"add_set_{ex['id']}"):
+                            try:
+                                add_set(ex['id'], 10, 0) # Default values
+                                st.rerun()
+                            except ValidationError as e:
+                                st.error(str(e))
+
+                st.divider()
+
+                # --- Add Exercise Section ---
+                st.subheader("Add Exercise")
+                all_exercises = get_all_exercises()
+                exercise_options = {e['id']: e['name'] for e in all_exercises}
+
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    selected_ex_id = st.selectbox("Select Exercise", options=list(exercise_options.keys()), format_func=lambda x: exercise_options[x])
+                with c2:
+                    if st.button("Add to Template"):
+                        add_exercise(template['id'], selected_ex_id)
+                        st.rerun()
+
+                with st.expander("Create New Exercise"):
+                    new_ex_name = st.text_input("Exercise Name")
+                    if st.button("Create Exercise"):
+                        if new_ex_name:
+                            try:
+                                create_exercise(new_ex_name)
+                                st.success(f"Created {new_ex_name}")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
 
 with tab_schedule:
     st.header("Assign Workouts")
@@ -310,4 +353,3 @@ with tab_schedule:
             
             if i < 6:
                 st.write("---") # Thin separator
-
