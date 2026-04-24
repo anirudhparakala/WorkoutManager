@@ -16,6 +16,24 @@ require_login()
 
 st.title("Manage Workouts")
 
+# --- Monochrome CSS ---
+st.markdown("""
+<style>
+    .stAlert > div[data-testid="stNotification"] {
+        background-color: #1a1a1a !important;
+        border-color: #333 !important;
+        color: #e0e0e0 !important;
+    }
+    hr { border-color: #222 !important; }
+    .stButton > button { border-color: #333 !important; }
+    .stButton > button[kind="primary"] {
+        background-color: #fff !important;
+        color: #000 !important;
+        border-color: #fff !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- State Initialization ---
 if "template_view_mode" not in st.session_state:
     st.session_state["template_view_mode"] = "list"

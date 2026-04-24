@@ -9,6 +9,38 @@ st.set_page_config(page_title="Calendar", page_icon="📅", layout="wide")
 from core.security import require_login
 require_login()
 
+# --- Monochrome CSS ---
+st.markdown("""
+<style>
+    .stAlert > div[data-testid="stNotification"] {
+        background-color: #1a1a1a !important;
+        border-color: #333 !important;
+        color: #e0e0e0 !important;
+    }
+    hr { border-color: #222 !important; }
+    div[data-testid="stMetric"] label { color: #888 !important; }
+    .cal-workout-done {
+        background-color: #1a1a1a; color: #ccc; padding: 10px; border-radius: 6px;
+        border-left: 3px solid #555; margin-bottom: 8px;
+    }
+    .cal-workout-active {
+        background-color: #1a1a1a; color: #ccc; padding: 10px; border-radius: 6px;
+        border-left: 3px solid #888; margin-bottom: 8px;
+    }
+    .cal-workout-planned {
+        background-color: #141414; color: #999; padding: 10px; border-radius: 6px;
+        border-left: 3px solid #333; margin-bottom: 8px;
+    }
+    .cal-rest {
+        background-color: #111; color: #666; padding: 10px; border-radius: 6px;
+        margin-bottom: 8px;
+    }
+    .cal-empty {
+        padding: 10px; opacity: 0.3;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Calendar")
 
 from services.consistency_service import calculate_current_streak
@@ -29,11 +61,11 @@ remaining_workouts = max(0, planned_workouts - completed_workouts)
 current_streak = calculate_current_streak(today_str_et())
 
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-kpi1.metric("Planned Days", planned_days)
-kpi2.metric("Planned Workouts", planned_workouts)
-kpi3.metric("Completed", completed_workouts)
+kpi1.metric("Planned", planned_days)
+kpi2.metric("Workouts", planned_workouts)
+kpi3.metric("Done", completed_workouts)
 kpi4.metric("Remaining", remaining_workouts)
-kpi5.metric("Consistency Streak", f"🔥 {current_streak}")
+kpi5.metric("Streak", f"{current_streak}w")
 
 st.divider()
 
@@ -67,9 +99,9 @@ col1, col2, col3, col4 = st.columns([1, 2, 0.5, 0.5])
 with col1:
     st.button("Today", on_click=go_today)
 with col3:
-    st.button("<", on_click=prev_month)
+    st.button("‹", on_click=prev_month)
 with col4:
-    st.button(">", on_click=next_month)
+    st.button("›", on_click=next_month)
 
 current_year = st.session_state["cal_year"]
 current_month = st.session_state["cal_month"]
@@ -95,7 +127,6 @@ for i, day in enumerate(days):
     cols[i].write(f"**{day}**")
 
 # Calendar Matrix
-# calendar.monthcalendar returns list of weeks (lists of 7 days). 0 means other month.
 cal_matrix = calendar.monthcalendar(current_year, current_month)
 
 for week in cal_matrix:
@@ -108,36 +139,20 @@ for week in cal_matrix:
                 current_date_str = f"{current_year}-{current_month:02d}-{day_num:02d}"
                 plan = plans_map.get(current_date_str)
                 
-                # Card Styling
-                # We can't style individual containers easily in Streamlit without CSS hacks,
-                # but we can use st.info/success/warning as the container background implicitly.
-                
-                label = f"**{day_num}**"
+                label = f"<span style='font-weight:700;font-size:1rem'>{day_num}</span>"
                 
                 if plan:
                     if plan['plan_type'] == 'WORKOUT':
                         status = plan.get('status', 'PLANNED')
                         if status == 'COMPLETED':
-                            st.success(f"{label}\n\n✅ {plan['name']}")
+                            st.markdown(f"<div class='cal-workout-done'>{label}<br><small>✓ {plan['name']}</small></div>", unsafe_allow_html=True)
                         elif status == 'ACTIVE':
-                            st.warning(f"{label}\n\n⚡ {plan['name']}")
+                            st.markdown(f"<div class='cal-workout-active'>{label}<br><small>● {plan['name']}</small></div>", unsafe_allow_html=True)
                         else:
-                            st.info(f"{label}\n\n🏋️ {plan['name']}")
+                            st.markdown(f"<div class='cal-workout-planned'>{label}<br><small>{plan['name']}</small></div>", unsafe_allow_html=True)
                     elif plan['plan_type'] == 'REST':
-                         # Using a neutral container? selection is limited. 
-                         # st.secondary is not a thing. st.markdown with style maybe?
-                         # Let's use st.success for rest but maybe different icon.
-                         st.markdown(f"""
-                            <div style="background-color: #f0f2f6; color: #31333f; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                                {label}<br><br>💤 Rest
-                            </div>
-                         """, unsafe_allow_html=True)
+                         st.markdown(f"<div class='cal-rest'>{label}<br><small>rest</small></div>", unsafe_allow_html=True)
                 else:
-                    # Empty day
-                    st.markdown(f"""
-                        <div style="padding: 10px; opacity: 0.5;">
-                            {label}
-                        </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"<div class='cal-empty'>{label}</div>", unsafe_allow_html=True)
     
-    st.divider() # Separator between weeks
+    st.divider()
