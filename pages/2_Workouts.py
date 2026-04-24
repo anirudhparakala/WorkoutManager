@@ -67,7 +67,7 @@ with tab_templates:
 
         # --- Template Card Grid ---
         if not templates:
-            st.info("No templates yet. Create one above to get started.")
+            st.caption("No templates yet. Create one above to get started.")
         else:
             # Render in a 2-column grid
             for row_start in range(0, len(templates), 2):
@@ -131,7 +131,7 @@ with tab_templates:
             st.rerun()
 
         if not selected_template_id:
-            st.warning("No template selected.")
+            st.caption("No template selected.")
         else:
             template = get_template(selected_template_id)
 
@@ -162,7 +162,7 @@ with tab_templates:
                 st.subheader("Exercises")
 
                 if not template['exercises']:
-                    st.info("No exercises in this template yet.")
+                    st.caption("No exercises in this template yet.")
 
                 for i, ex in enumerate(template['exercises']):
                     with st.expander(f"{i+1}. {ex['name']}", expanded=True):
@@ -245,7 +245,7 @@ with tab_templates:
                         if new_ex_name:
                             try:
                                 create_exercise(new_ex_name)
-                                st.success(f"Created {new_ex_name}")
+                                st.caption(f"Created {new_ex_name}")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -282,7 +282,7 @@ with tab_schedule:
                     format_func=lambda x: next((t['name'] for t in templates_list if t['id'] == x), "Unknown")
                 )
             else:
-                st.warning("No templates available.")
+                st.caption("No templates available.")
         else:
              st.write("") # Placeholder
                 
@@ -296,17 +296,17 @@ with tab_schedule:
                 if plan_type == "WORKOUT":
                     if template_id_to_assign:
                         assign_workout(date_str_assign, template_id_to_assign)
-                        st.success(f"Assigned workout to {date_str_assign}")
+                        st.caption(f"Assigned workout to {date_str_assign}")
                         st.rerun()
                     else:
                         st.error("Please select a template.")
                 elif plan_type == "REST":
                     assign_rest(date_str_assign)
-                    st.success(f"Assigned rest to {date_str_assign}")
+                    st.caption(f"Assigned rest to {date_str_assign}")
                     st.rerun()
                 elif plan_type == "OFF":
                     assign_off(date_str_assign)
-                    st.success(f"Cleared plan for {date_str_assign}")
+                    st.caption(f"Cleared plan for {date_str_assign}")
                     st.rerun()
                     
             except PlannerError as e:
@@ -359,15 +359,15 @@ with tab_schedule:
                 if plan:
                     if plan['plan_type'] == 'WORKOUT':
                         if plan.get('status') == 'COMPLETED':
-                            st.success(f"✅ {plan['name']}")
+                            st.markdown(f"✓ {plan['name']}")
                         elif plan.get('status') == 'ACTIVE':
-                            st.warning(f"⚡ {plan['name']}")
+                            st.markdown(f"● {plan['name']}")
                         else:
-                            st.info(f"🏋️ {plan['name']}")
+                            st.caption(plan['name'])
                     elif plan['plan_type'] == 'REST':
-                        st.success("💤 Rest Day")
+                        st.caption("rest")
                 else:
-                    st.markdown("<span style='color: grey'>OFF</span>", unsafe_allow_html=True)
+                    st.markdown("<span style='color: #444'>—</span>", unsafe_allow_html=True)
             
             if i < 6:
                 st.write("---") # Thin separator
