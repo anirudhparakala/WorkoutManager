@@ -291,11 +291,8 @@ if active_session:
                 
                     c1, c2, c3 = st.columns([2, 2, 2])
                     
-                    # Defaults — use overload suggestion if available
-                    if overload:
-                        default_reps = overload['suggested_reps']
-                    else:
-                        default_reps = current_set['planned_reps'] or 0
+                    # Defaults — always default to planned_reps/last time, not the target bump
+                    default_reps = current_set['planned_reps'] or 0
                     default_weight = current_set['planned_weight'] or 0.0
                     
                     with c1:
