@@ -111,8 +111,13 @@ def bulk_schedule():
         
         # item: (date, plan, tid, name, status)
         client.execute("""
-            INSERT OR REPLACE INTO workouts (date, plan_type, template_id, name, status)
+            INSERT INTO workouts (date, plan_type, template_id, name, status)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                plan_type = excluded.plan_type,
+                template_id = excluded.template_id,
+                name = excluded.name,
+                status = excluded.status
         """, item)
         cnt += 1
         

@@ -20,20 +20,14 @@ def get_day_plan(date_str):
 
 def upsert_day_plan(date_str, plan_type, template_id=None, name=None):
     """Creates or updates the plan for a date."""
-    # Check if exists
-    existing = get_day_plan(date_str)
-    
-    if existing:
-        execute("""
-            UPDATE workouts 
-            SET plan_type = ?, template_id = ?, name = ?
-            WHERE date = ?
-        """, (plan_type, template_id, name, date_str))
-    else:
-        execute("""
-            INSERT INTO workouts (date, plan_type, template_id, name)
-            VALUES (?, ?, ?, ?)
-        """, (date_str, plan_type, template_id, name))
+    execute("""
+        INSERT INTO workouts (date, plan_type, template_id, name, status)
+        VALUES (?, ?, ?, ?, 'PLANNED')
+        ON CONFLICT(date) DO UPDATE SET
+            plan_type = excluded.plan_type,
+            template_id = excluded.template_id,
+            name = excluded.name
+    """, (date_str, plan_type, template_id, name))
 
 def get_range(start_date, end_date):
     """Returns list of plans in range."""

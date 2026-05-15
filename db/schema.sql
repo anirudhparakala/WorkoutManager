@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS template_sets (
 -- Scheduled/Actual Workouts
 CREATE TABLE IF NOT EXISTS workouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
+    date DATE NOT NULL UNIQUE,
     name TEXT,
     status TEXT CHECK(status IN ('PLANNED', 'ACTIVE', 'COMPLETED')) DEFAULT 'PLANNED',
     plan_type TEXT CHECK(plan_type IN ('WORKOUT', 'REST')) DEFAULT 'WORKOUT',

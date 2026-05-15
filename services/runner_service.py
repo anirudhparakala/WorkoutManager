@@ -39,7 +39,7 @@ def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_wei
     
     # Check progressive overload advancement
     try:
-        check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps)
+        check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps, actual_weight)
     except Exception:
         pass  # Overload tracking should never block set completion
     
@@ -196,10 +196,10 @@ def get_progressive_overload_targets(workout_id):
         
         total_sets = len(ex['sets'])
         
-        # Get cursor position (or initialize to set 3 / last set)
+        # Get cursor position (or initialize to last set)
         cursor = runner_repo.get_overload_cursor(template_id, exercise_id)
         if cursor is None:
-            cursor = min(3, total_sets)
+            cursor = total_sets
             runner_repo.set_overload_cursor(template_id, exercise_id, cursor)
         
         # Find the targeted set's actual data from last workout
@@ -220,12 +220,12 @@ def get_progressive_overload_targets(workout_id):
     return targets
 
 
-def check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps):
+def check_and_advance_overload(workout_id, exercise_order, set_number, actual_reps, actual_weight=None):
     """
     After a set is completed, check if it was the overload target set
-    and if actual == suggested. If so, advance the cursor.
+    and if actual >= suggested OR if weight was increased. If so, advance the cursor backwards.
     
-    Cursor advancement wraps: after last set -> set 1 -> set 2 -> ...
+    Cursor advancement wraps: after set 1 -> last set
     """
     from db.conn import query_one
     
@@ -260,16 +260,34 @@ def check_and_advance_overload(workout_id, exercise_order, set_number, actual_re
             continue
         for s in ex['sets']:
             if s['set_number'] == cursor and s['completed'] and s['actual_reps'] is not None:
-                suggested = s['actual_reps'] + 1
+                suggested_reps = s['actual_reps'] + 1
+                last_weight = s['actual_weight'] or 0.0
+                curr_weight = actual_weight or 0.0
                 
-                if actual_reps == suggested:
-                    # TARGET MET → advance cursor
+                target_met = False
+                should_reset = False
+                
+                # Smart Weight Progression
+                if curr_weight > last_weight:
+                    # Weight increased! Reset progression back to the last set to build reps
+                    target_met = True
+                    should_reset = True
+                elif curr_weight == last_weight:
+                    # Same weight, check if reps met or exceeded target
+                    if actual_reps >= suggested_reps:
+                        target_met = True
+                
+                if target_met:
                     total_sets = len(ex['sets'])
-                    if cursor >= total_sets:
-                        next_cursor = 1  # Wrap around to set 1
+                    if should_reset:
+                        next_cursor = total_sets
                     else:
-                        next_cursor = cursor + 1
+                        # Advance backwards: e.g. Set 3 -> Set 2 -> Set 1
+                        if cursor <= 1:
+                            next_cursor = total_sets  # Wrap around to the last set
+                        else:
+                            next_cursor = cursor - 1
                     
                     runner_repo.set_overload_cursor(template_id, exercise_id, next_cursor)
-                # else: cursor stays, do nothing
+                
                 return

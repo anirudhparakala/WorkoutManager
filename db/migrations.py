@@ -101,3 +101,25 @@ def migrate():
         """)
         execute("INSERT INTO schema_version (version) VALUES (5)")
         print("Migration v5 applied successfully.")
+
+    if current_version < 6:
+        print("Applying migration v6 (Workout Date Unique)...")
+        # 1. Delete duplicate workouts (keep COMPLETED > ACTIVE > PLANNED, then max id)
+        execute("""
+            DELETE FROM workouts
+            WHERE id NOT IN (
+                SELECT id FROM (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY date
+                        ORDER BY 
+                            CASE status WHEN 'COMPLETED' THEN 1 WHEN 'ACTIVE' THEN 2 ELSE 3 END,
+                            id DESC
+                    ) as rn
+                    FROM workouts
+                ) WHERE rn = 1
+            )
+        """)
+        # 2. Create unique index
+        execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_workouts_date_unique ON workouts(date)")
+        execute("INSERT INTO schema_version (version) VALUES (6)")
+        print("Migration v6 applied successfully.")
