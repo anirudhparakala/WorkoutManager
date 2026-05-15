@@ -123,3 +123,25 @@ def migrate():
         execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_workouts_date_unique ON workouts(date)")
         execute("INSERT INTO schema_version (version) VALUES (6)")
         print("Migration v6 applied successfully.")
+
+    if current_version < 7:
+        print("Applying migration v7 (Cardio Time Tracking)...")
+        # Add columns
+        try:
+            execute("ALTER TABLE exercises ADD COLUMN is_time_based BOOLEAN DEFAULT 0")
+        except Exception: pass
+        try:
+            execute("ALTER TABLE template_sets ADD COLUMN time_minutes REAL")
+        except Exception: pass
+        try:
+            execute("ALTER TABLE sets ADD COLUMN planned_time_minutes REAL")
+        except Exception: pass
+        try:
+            execute("ALTER TABLE sets ADD COLUMN actual_time_minutes REAL")
+        except Exception: pass
+        
+        # Seed Cardio exercise
+        execute("INSERT OR IGNORE INTO exercises (name, notes, is_time_based) VALUES ('Cardio', 'Time-based cardio at the end of workout', 1)")
+        
+        execute("INSERT INTO schema_version (version) VALUES (7)")
+        print("Migration v7 applied successfully.")

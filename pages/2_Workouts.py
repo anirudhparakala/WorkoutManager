@@ -195,31 +195,47 @@ with tab_templates:
                             st.caption("No sets defined.")
                         
                         for s in ex['sets']:
-                            sc1, sc2, sc3, sc4 = st.columns([1, 2, 2, 1])
-                            with sc1:
-                                st.write(f"Set {s['set_number']}")
-                            with sc2:
-                                reps = st.number_input("Reps", value=s['reps'] or 0, key=f"reps_{s['id']}")
-                            with sc3:
-                                weight = st.number_input("Weight", value=s['weight'] or 0.0, step=2.5, key=f"weight_{s['id']}")
-                            with sc4:
-                                if st.button("❌", key=f"del_set_{s['id']}"):
-                                    delete_set(s['id'])
-                                    st.rerun()
-                            
-                            # Auto-save on change (Streamlit reruns on input change)
-                            if reps != (s['reps'] or 0) or weight != (s['weight'] or 0.0):
-                                try:
-                                    update_set(s['id'], reps, weight)
-                                except ValidationError as e:
-                                    st.error(str(e))
-                                # We don't rerun here to avoid jarring UX, but it saves.
-                                # Actually, we might need to rerun to refresh the state if we want strict consistency,
-                                # but for inputs, it's usually fine.
+                            if ex.get('is_time_based'):
+                                sc1, sc2, sc4 = st.columns([1, 4, 1])
+                                with sc1:
+                                    st.write(f"Set {s['set_number']}")
+                                with sc2:
+                                    time_mins = st.number_input("Duration (minutes)", value=s.get('time_minutes') or 0.0, step=1.0, key=f"time_{s['id']}")
+                                with sc4:
+                                    if st.button("❌", key=f"del_set_{s['id']}"):
+                                        delete_set(s['id'])
+                                        st.rerun()
+                                
+                                if time_mins != (s.get('time_minutes') or 0.0):
+                                    try:
+                                        update_set(s['id'], None, None, time_minutes=time_mins)
+                                    except ValidationError as e:
+                                        st.error(str(e))
+                            else:
+                                sc1, sc2, sc3, sc4 = st.columns([1, 2, 2, 1])
+                                with sc1:
+                                    st.write(f"Set {s['set_number']}")
+                                with sc2:
+                                    reps = st.number_input("Reps", value=s['reps'] or 0, key=f"reps_{s['id']}")
+                                with sc3:
+                                    weight = st.number_input("Weight", value=s['weight'] or 0.0, step=2.5, key=f"weight_{s['id']}")
+                                with sc4:
+                                    if st.button("❌", key=f"del_set_{s['id']}"):
+                                        delete_set(s['id'])
+                                        st.rerun()
+                                
+                                if reps != (s['reps'] or 0) or weight != (s['weight'] or 0.0):
+                                    try:
+                                        update_set(s['id'], reps, weight)
+                                    except ValidationError as e:
+                                        st.error(str(e))
                         
                         if st.button("Add Set", key=f"add_set_{ex['id']}"):
                             try:
-                                add_set(ex['id'], 10, 0) # Default values
+                                if ex.get('is_time_based'):
+                                    add_set(ex['id'], None, None, time_minutes=15.0)
+                                else:
+                                    add_set(ex['id'], 10, 0)
                                 st.rerun()
                             except ValidationError as e:
                                 st.error(str(e))

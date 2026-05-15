@@ -179,14 +179,15 @@ def get_last_time_data(workout_id):
     if not last_exercises:
         return {}
     
-    # Build lookup: (exercise_id, set_number) -> {actual_reps, actual_weight}
+    # Build lookup: (exercise_id, set_number) -> {actual_reps, actual_weight, actual_time_minutes}
     lookup = {}
     for ex in last_exercises:
         for s in ex['sets']:
-            if s['completed'] and s['actual_reps'] is not None:
+            if s['completed'] and (s['actual_reps'] is not None or s['actual_time_minutes'] is not None):
                 lookup[(ex['exercise_id'], s['set_number'])] = {
                     'reps': s['actual_reps'],
-                    'weight': s['actual_weight']
+                    'weight': s['actual_weight'],
+                    'time_minutes': s.get('actual_time_minutes')
                 }
     return lookup
 
@@ -206,6 +207,33 @@ if active_session:
     
     if active_session['status'] == 'COMPLETED':
         st.markdown("### ✓ Workout Completed")
+        
+        # --- Friday Weekly Cardio Summary ---
+        today_date = datetime.datetime.strptime(today_str, '%Y-%m-%d')
+        if today_date.weekday() == 4: # 4 = Friday
+            # Calculate Monday of this week
+            monday_date = today_date - datetime.timedelta(days=4)
+            mon_str = monday_date.strftime('%Y-%m-%d')
+            fri_str = today_str
+            
+            from db.conn import query_one
+            # Sum up actual_time_minutes for Cardio exercise between Monday and Friday
+            res = query_one("""
+                SELECT SUM(s.actual_time_minutes)
+                FROM sets s
+                JOIN workout_exercises we ON s.workout_exercise_id = we.id
+                JOIN workouts w ON we.workout_id = w.id
+                JOIN exercises e ON we.exercise_id = e.id
+                WHERE e.name = 'Cardio' 
+                  AND s.completed = 1
+                  AND w.date >= ? AND w.date <= ?
+            """, (mon_str, fri_str))
+            
+            total_cardio_mins = res[0] if res and res[0] else 0
+            
+            if total_cardio_mins > 0:
+                st.info(f"🎉 **Weekly Summary:** You completed **{int(total_cardio_mins)} minutes** of cardio this week!")
+
     else:
         # Fetch Progression
         progression = runner_service.get_workout_progression(active_session['id'])
@@ -271,10 +299,14 @@ if active_session:
                     if progression.get('timer_base'):
                          render_timer("Rest", progression['timer_base'], key_prefix="rest_timer")
                     
-                    if overload:
-                        st.markdown(f"**Target: {overload['suggested_reps']} reps ⬆ (was {overload['last_reps']}) @ {current_set['planned_weight']} lbs**")
+                    if active_ex.get('is_time_based'):
+                        target_time = current_set.get('planned_time_minutes') or 15.0
+                        st.markdown(f"**Target: {target_time} minutes**")
                     else:
-                        st.markdown(f"**Target: {current_set['planned_reps']} reps @ {current_set['planned_weight']} lbs**")
+                        if overload:
+                            st.markdown(f"**Target: {overload['suggested_reps']} reps ⬆ (was {overload['last_reps']}) @ {current_set['planned_weight']} lbs**")
+                        else:
+                            st.markdown(f"**Target: {current_set['planned_reps']} reps @ {current_set['planned_weight']} lbs**")
                     
                     if st.button(f"Start Set {current_set['set_number']}", type="primary", use_container_width=True):
                         # Start Timer
@@ -289,36 +321,56 @@ if active_session:
                     # Show Set Timer
                     render_timer("Set Duration", progression['timer_base'], key_prefix="set_timer")
                 
-                    c1, c2, c3 = st.columns([2, 2, 2])
-                    
-                    # Defaults — always default to planned_reps/last time, not the target bump
-                    default_reps = current_set['planned_reps'] or 0
-                    default_weight = current_set['planned_weight'] or 0.0
-                    
-                    with c1:
-                        if overload:
-                            st.markdown(f"**Target**: {overload['suggested_reps']} ⬆ (was {overload['last_reps']}) × {default_weight} lbs")
-                        else:
-                            st.markdown(f"**Target**: {default_reps} × {default_weight} lbs")
-                        # Ghost text for "last time" in IN_SET state too
-                        if last_time:
-                            st.markdown(f"<div class='ghost-text'>last: {last_time['reps']} × {last_time['weight']}</div>", unsafe_allow_html=True)
-                    
-                    with c2:
-                        actual_reps = st.number_input("Reps", value=default_reps, key=f"curr_reps_{current_set['id']}")
-                    with c3:
-                        actual_weight = st.number_input("Weight", value=default_weight, step=2.5, key=f"curr_weight_{current_set['id']}")
-                    
-                    st.write("")
-                    if st.button("Finish Set", type="primary", use_container_width=True):
-                        runner_service.complete_set(
-                            active_session['id'], 
-                            active_ex['order_index'], 
-                            current_set['set_number'], 
-                            actual_reps, 
-                            actual_weight
-                        )
-                        st.rerun()
+                    if active_ex.get('is_time_based'):
+                        default_time = current_set.get('planned_time_minutes') or 15.0
+                        
+                        st.markdown(f"**Target**: {default_time} minutes")
+                        if last_time and last_time.get('time_minutes') is not None:
+                            st.markdown(f"<div class='ghost-text'>last: {last_time['time_minutes']} mins</div>", unsafe_allow_html=True)
+                        
+                        actual_time = st.number_input("Duration (minutes)", value=default_time, step=1.0, key=f"curr_time_{current_set['id']}")
+                        st.write("")
+                        if st.button("Finish Set", type="primary", use_container_width=True):
+                            runner_service.complete_set(
+                                active_session['id'], 
+                                active_ex['order_index'], 
+                                current_set['set_number'], 
+                                None, 
+                                None,
+                                time_minutes=actual_time
+                            )
+                            st.rerun()
+                    else:
+                        c1, c2, c3 = st.columns([2, 2, 2])
+                        
+                        # Defaults — always default to planned_reps/last time, not the target bump
+                        default_reps = current_set['planned_reps'] or 0
+                        default_weight = current_set['planned_weight'] or 0.0
+                        
+                        with c1:
+                            if overload:
+                                st.markdown(f"**Target**: {overload['suggested_reps']} ⬆ (was {overload['last_reps']}) × {default_weight} lbs")
+                            else:
+                                st.markdown(f"**Target**: {default_reps} × {default_weight} lbs")
+                            # Ghost text for "last time" in IN_SET state too
+                            if last_time:
+                                st.markdown(f"<div class='ghost-text'>last: {last_time['reps']} × {last_time['weight']}</div>", unsafe_allow_html=True)
+                        
+                        with c2:
+                            actual_reps = st.number_input("Reps", value=default_reps, key=f"curr_reps_{current_set['id']}")
+                        with c3:
+                            actual_weight = st.number_input("Weight", value=default_weight, step=2.5, key=f"curr_weight_{current_set['id']}")
+                        
+                        st.write("")
+                        if st.button("Finish Set", type="primary", use_container_width=True):
+                            runner_service.complete_set(
+                                active_session['id'], 
+                                active_ex['order_index'], 
+                                current_set['set_number'], 
+                                actual_reps, 
+                                actual_weight
+                            )
+                            st.rerun()
 
             st.divider()
             
@@ -327,20 +379,35 @@ if active_session:
             if history:
                 st.markdown("**Set History**")
                 for h in history:
-                    with st.expander(f"Set {h['set_number']} — {h['actual_reps']} × {h['actual_weight']}", expanded=False):
-                        # Edit Controls
-                        hc1, hc2, hc3 = st.columns([2, 2, 1])
-                        with hc1:
-                            new_reps = st.number_input("Reps", value=h['actual_reps'], key=f"h_reps_{h['id']}")
-                        with hc2:
-                            new_weight = st.number_input("Weight", value=h['actual_weight'], step=2.5, key=f"h_weight_{h['id']}")
-                        with hc3:
-                            st.write("")
-                            st.write("")
-                            if st.button("Update", key=f"h_save_{h['id']}"):
-                                runner_service.update_completed_set(h['id'], new_reps, new_weight)
-                                st.success("Saved")
-                                st.rerun()
+                    if active_ex.get('is_time_based'):
+                        title = f"Set {h['set_number']} — {h.get('actual_time_minutes')} mins"
+                        with st.expander(title, expanded=False):
+                            hc1, hc2 = st.columns([3, 1])
+                            with hc1:
+                                new_time = st.number_input("Duration (mins)", value=h.get('actual_time_minutes') or 0.0, step=1.0, key=f"h_time_{h['id']}")
+                            with hc2:
+                                st.write("")
+                                st.write("")
+                                if st.button("Update", key=f"h_save_{h['id']}"):
+                                    runner_service.update_completed_set(h['id'], None, None, time_minutes=new_time)
+                                    st.success("Saved")
+                                    st.rerun()
+                    else:
+                        title = f"Set {h['set_number']} — {h['actual_reps']} × {h['actual_weight']}"
+                        with st.expander(title, expanded=False):
+                            # Edit Controls
+                            hc1, hc2, hc3 = st.columns([2, 2, 1])
+                            with hc1:
+                                new_reps = st.number_input("Reps", value=h['actual_reps'], key=f"h_reps_{h['id']}")
+                            with hc2:
+                                new_weight = st.number_input("Weight", value=h['actual_weight'], step=2.5, key=f"h_weight_{h['id']}")
+                            with hc3:
+                                st.write("")
+                                st.write("")
+                                if st.button("Update", key=f"h_save_{h['id']}"):
+                                    runner_service.update_completed_set(h['id'], new_reps, new_weight)
+                                    st.success("Saved")
+                                    st.rerun()
 
 else:
     # --- PLANNED / TEMPLATE MODE ---

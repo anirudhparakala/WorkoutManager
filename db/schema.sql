@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS schema_version (
 CREATE TABLE IF NOT EXISTS exercises (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    notes TEXT
+    notes TEXT,
+    is_time_based BOOLEAN DEFAULT 0
 );
 
 -- Workout Templates
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS template_sets (
     set_number INTEGER NOT NULL,
     reps INTEGER,
     weight REAL,
+    time_minutes REAL,
     FOREIGN KEY (template_exercise_id) REFERENCES template_exercises(id) ON DELETE CASCADE,
     UNIQUE (template_exercise_id, set_number)
 );
@@ -77,8 +79,10 @@ CREATE TABLE IF NOT EXISTS sets (
     set_number INTEGER NOT NULL,
     planned_reps INTEGER,
     planned_weight REAL,
+    planned_time_minutes REAL,
     actual_reps INTEGER,
     actual_weight REAL,
+    actual_time_minutes REAL,
     completed BOOLEAN DEFAULT 0,
     FOREIGN KEY (workout_exercise_id) REFERENCES workout_exercises(id) ON DELETE CASCADE,
     UNIQUE (workout_exercise_id, set_number)

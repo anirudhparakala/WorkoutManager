@@ -16,12 +16,12 @@ def start_set(workout_id, exercise_order, set_number):
     runner_repo.start_set_timer(target_set['id'])
     return True
 
-def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_weight):
+def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_weight, time_minutes=None):
     """Marks a set as complete. Idempotent."""
     target_set = runner_repo.get_workout_set(workout_id, exercise_order, set_number)
     if not target_set:
         raise RunnerError(f"Set not found: W:{workout_id} E:{exercise_order} S:{set_number}")
-    runner_repo.update_set_actuals(target_set['id'], actual_reps, actual_weight)
+    runner_repo.update_set_actuals(target_set['id'], actual_reps, actual_weight, time_minutes)
     
     # Sync to Template (Ticket 17)
     # 1. Need template_id. Get it from session.
@@ -45,9 +45,9 @@ def complete_set(workout_id, exercise_order, set_number, actual_reps, actual_wei
     
     return True
 
-def update_completed_set(set_id, actual_reps, actual_weight):
+def update_completed_set(set_id, actual_reps, actual_weight, time_minutes=None):
     """Updates an already completed set."""
-    runner_repo.update_set_actuals(set_id, actual_reps, actual_weight)
+    runner_repo.update_set_actuals(set_id, actual_reps, actual_weight, time_minutes)
     
     # Sync to Template (Ticket 17)
     # We have set_id. Need to traverse back to workout -> template

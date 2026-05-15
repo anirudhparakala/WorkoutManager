@@ -21,7 +21,7 @@ def get_template(template_id):
     
     # Fetch exercises
     exercises = query_all("""
-        SELECT te.id, te.exercise_id, e.name, te.order_index, te.sets, te.reps, te.weight
+        SELECT te.id, te.exercise_id, e.name, te.order_index, te.sets, te.reps, te.weight, e.is_time_based
         FROM template_exercises te
         JOIN exercises e ON te.exercise_id = e.id
         WHERE te.template_id = ?
@@ -37,12 +37,13 @@ def get_template(template_id):
             "default_sets_count": ex[4], # Legacy/Summary column
             "default_reps": ex[5],       # Legacy/Summary column
             "default_weight": ex[6],     # Legacy/Summary column
+            "is_time_based": bool(ex[7]),
             "sets": []
         }
         
         # Fetch detailed sets
         sets = query_all("""
-            SELECT id, set_number, reps, weight
+            SELECT id, set_number, reps, weight, time_minutes
             FROM template_sets
             WHERE template_exercise_id = ?
             ORDER BY set_number
@@ -53,7 +54,8 @@ def get_template(template_id):
                 "id": s[0],
                 "set_number": s[1],
                 "reps": s[2],
-                "weight": s[3]
+                "weight": s[3],
+                "time_minutes": s[4]
             })
             
         result["exercises"].append(ex_data)
@@ -117,15 +119,15 @@ def reorder_exercises(template_id, new_order_ids):
     with get_conn() as client:
         client.batch(stmts)
 
-def add_set(template_exercise_id, reps=None, weight=None):
+def add_set(template_exercise_id, reps=None, weight=None, time_minutes=None):
     """Adds a set to a template exercise."""
     row = query_one("SELECT MAX(set_number) FROM template_sets WHERE template_exercise_id = ?", (template_exercise_id,))
     next_set = (row[0] or 0) + 1
     
     execute("""
-        INSERT INTO template_sets (template_exercise_id, set_number, reps, weight)
-        VALUES (?, ?, ?, ?)
-    """, (template_exercise_id, next_set, reps, weight))
+        INSERT INTO template_sets (template_exercise_id, set_number, reps, weight, time_minutes)
+        VALUES (?, ?, ?, ?, ?)
+    """, (template_exercise_id, next_set, reps, weight, time_minutes))
 
 def delete_set(set_id):
     """Deletes a set and re-normalizes set numbers."""
@@ -150,9 +152,9 @@ def delete_template(template_id):
     """Deletes a template."""
     execute("DELETE FROM templates WHERE id = ?", (template_id,))
 
-def update_set(set_id, reps=None, weight=None):
+def update_set(set_id, reps=None, weight=None, time_minutes=None):
     """Updates a set."""
-    execute("UPDATE template_sets SET reps = ?, weight = ? WHERE id = ?", (reps, weight, set_id))
+    execute("UPDATE template_sets SET reps = ?, weight = ?, time_minutes = ? WHERE id = ?", (reps, weight, time_minutes, set_id))
 
 def update_template_set_match(template_id, order_index, set_number, reps, weight):
     """Updates the template set that matches the given structure."""

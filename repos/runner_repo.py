@@ -58,18 +58,19 @@ def create_session_from_template(date_str, template_id):
         placeholders = ','.join(['?'] * len(t_exercises))
         te_ids = [te[0] for te in t_exercises]
         rows = query_all(f"""
-            SELECT template_exercise_id, set_number, reps, weight
+            SELECT template_exercise_id, set_number, reps, weight, time_minutes
             FROM template_sets
             WHERE template_exercise_id IN ({placeholders})
         """, te_ids)
         for r in rows:
-            tid, s_num, reps, weight = r
+            tid, s_num, reps, weight, t_mins = r
             if tid not in t_sets_map:
                 t_sets_map[tid] = []
             t_sets_map[tid].append({
                 "set_number": s_num,
                 "reps": reps,
-                "weight": weight
+                "weight": weight,
+                "time_minutes": t_mins
             })
 
     # 3. Create/Update Workout
@@ -130,16 +131,16 @@ def create_session_from_template(date_str, template_id):
         sets = t_sets_map.get(te_id, [])
         for s in sets:
             execute("""
-                INSERT INTO sets (workout_exercise_id, set_number, planned_reps, planned_weight, completed)
-                VALUES (?, ?, ?, ?, 0)
-            """, (we_id, s['set_number'], s['reps'], s['weight']))
+                INSERT INTO sets (workout_exercise_id, set_number, planned_reps, planned_weight, planned_time_minutes, completed)
+                VALUES (?, ?, ?, ?, ?, 0)
+            """, (we_id, s['set_number'], s['reps'], s['weight'], s['time_minutes']))
 
     return workout_id
 
 def get_workout_set(workout_id, exercise_order, set_number):
     """Retrieves a specific set by workout structure."""
     row = query_one("""
-        SELECT s.id, s.completed, s.actual_reps, s.actual_weight, s.started_at, s.completed_at
+        SELECT s.id, s.completed, s.actual_reps, s.actual_weight, s.actual_time_minutes, s.started_at, s.completed_at
         FROM sets s
         JOIN workout_exercises we ON s.workout_exercise_id = we.id
         WHERE we.workout_id = ? 
@@ -153,19 +154,20 @@ def get_workout_set(workout_id, exercise_order, set_number):
             "completed": bool(row[1]),
             "actual_reps": row[2],
             "actual_weight": row[3],
-            "started_at": row[4],
-            "completed_at": row[5]
+            "actual_time_minutes": row[4],
+            "started_at": row[5],
+            "completed_at": row[6]
         }
     return None
 
-def update_set_actuals(set_id, reps, weight):
+def update_set_actuals(set_id, reps, weight, time_minutes=None):
     """Updates set with actual values and marks as complete."""
     completed_at = datetime.datetime.now().isoformat()
     execute("""
         UPDATE sets 
-        SET actual_reps = ?, actual_weight = ?, completed = 1, completed_at = ?
+        SET actual_reps = ?, actual_weight = ?, actual_time_minutes = ?, completed = 1, completed_at = ?
         WHERE id = ?
-    """, (reps, weight, completed_at, set_id))
+    """, (reps, weight, time_minutes, completed_at, set_id))
 
 def start_set_timer(set_id):
     """Marks a set as started (IN_SET state)."""
@@ -179,8 +181,9 @@ def get_workout_exercises_with_sets(workout_id):
     # This is a bit complex, let's fetch flat and restructure or fetch hierarchically.
     # Flat fetch of sets joined with workout_exercises
     rows = query_all("""
-        SELECT we.id, we.exercise_id, e.name, we.order_index, 
-               s.id, s.set_number, s.planned_reps, s.planned_weight, s.actual_reps, s.actual_weight, s.completed,
+        SELECT we.id, we.exercise_id, e.name, e.is_time_based, we.order_index, 
+               s.id, s.set_number, s.planned_reps, s.planned_weight, s.planned_time_minutes,
+               s.actual_reps, s.actual_weight, s.actual_time_minutes, s.completed,
                s.started_at, s.completed_at
         FROM workout_exercises we
         JOIN exercises e ON we.exercise_id = e.id
@@ -200,7 +203,8 @@ def get_workout_exercises_with_sets(workout_id):
                 "id": we_id,
                 "exercise_id": r[1],
                 "name": r[2],
-                "order_index": r[3],
+                "is_time_based": bool(r[3]),
+                "order_index": r[4],
                 "sets": []
             }
             exercises_map[we_id] = ex_obj
@@ -209,15 +213,17 @@ def get_workout_exercises_with_sets(workout_id):
             ex_obj = exercises_map[we_id]
             
         ex_obj["sets"].append({
-            "id": r[4],
-            "set_number": r[5],
-            "planned_reps": r[6],
-            "planned_weight": r[7],
-            "actual_reps": r[8],
-            "actual_weight": r[9],
-            "completed": bool(r[10]),
-            "started_at": r[11],
-            "completed_at": r[12]
+            "id": r[5],
+            "set_number": r[6],
+            "planned_reps": r[7],
+            "planned_weight": r[8],
+            "planned_time_minutes": r[9],
+            "actual_reps": r[10],
+            "actual_weight": r[11],
+            "actual_time_minutes": r[12],
+            "completed": bool(r[13]),
+            "started_at": r[14],
+            "completed_at": r[15]
         })
         
     return results

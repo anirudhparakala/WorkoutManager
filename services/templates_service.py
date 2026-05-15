@@ -21,13 +21,15 @@ def update_template(template_id, name):
     validate_template_name(name)
     templates_repo.update_template(template_id, name.strip())
 
-def add_set(template_exercise_id, reps, weight):
-    validate_set_data(reps, weight)
-    templates_repo.add_set(template_exercise_id, reps, weight)
+def add_set(template_exercise_id, reps, weight, time_minutes=None):
+    if reps is not None or weight is not None:
+        validate_set_data(reps, weight)
+    templates_repo.add_set(template_exercise_id, reps, weight, time_minutes)
 
-def update_set(set_id, reps, weight):
-    validate_set_data(reps, weight)
-    templates_repo.update_set(set_id, reps, weight)
+def update_set(set_id, reps, weight, time_minutes=None):
+    if reps is not None or weight is not None:
+        validate_set_data(reps, weight)
+    templates_repo.update_set(set_id, reps, weight, time_minutes)
 
 # Pass-through methods
 def get_all_templates():
